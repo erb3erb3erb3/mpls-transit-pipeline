@@ -50,11 +50,23 @@ def fetch_noaa_daily(date):
     ) for rec in results]
     return rows
 
+# Function to check if Partion exists 
+def partition_exists(date):
+    partition_folder = os.path.join(bronze_path, f"date={date}")
+    return os.path.exists(partition_folder)
+
+
 def write_to_bronze(rows):
     if not rows:
         print("No weather data to write.")
         return
     
+    # Check if partition for the date already exists, skip write if it does.
+    partition_date = rows[0].date if rows else None
+    if partition_exists(partition_date):
+        print(f"Partition for date {partition_date} already exists. Skipping write.")
+        return 
+
     df = spark.createDataFrame(rows, schema=weather_schema)
     df = df.withColumn("date", df["date"].cast("date"))
     df = df.withColumn("ingestion_time", current_timestamp())
@@ -62,9 +74,10 @@ def write_to_bronze(rows):
     print(f"Wrote {len(rows)} rows to {bronze_path}")
 
 
+
 if __name__ == "__main__":
     print(f"token = {NOAA_TOKEN}")
-    backfill_days = 3
+    backfill_days = 5
     for i in range(backfill_days):
         date = (datetime.now() - timedelta(days=i+1)).strftime("%Y-%m-%d")
         print(f"Fetching NOAA data for {date}...")
