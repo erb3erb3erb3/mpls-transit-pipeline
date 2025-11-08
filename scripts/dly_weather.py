@@ -8,7 +8,14 @@ from pyspark.sql.functions import current_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, DateType
 
 # Spark init
-spark = SparkSession.builder.appName("NOAA Daily Weather Ingestion").getOrCreate()
+spark = (
+    SparkSession.builder
+    .appName("NOAA Daily Weather Ingestion")
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com")
+     .config("spark.hadoop.fs.s3a.aws.credentials.provider", "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider")
+    .getOrCreate()
+)
 
 # NOAA API settings
 NOAA_TOKEN = os.getenv("NOAA_TOKEN")  # export this in your environment 
@@ -21,10 +28,11 @@ weather_schema = StructType([
     StructField("datatype", StringType(), True),
     StructField("value", DoubleType(), True),   # always numeric
     StructField("date", StringType(), True)      # YYYY-MM-DD
+    #StructField("ingestion_time", StringType(), True)  # will fill with current_timestamp later
 ])
 
 # Bronze output path
-bronze_path = "./bronze/weather/daily/"
+bronze_path = "s3a://minneapolis-transit-lake/bronze/noaa_daily_weather"
 
 def fetch_noaa_daily(date):
     headers = {"token": NOAA_TOKEN}
@@ -72,7 +80,6 @@ def write_to_bronze(rows):
     df = df.withColumn("ingestion_time", current_timestamp())
     df.write.mode("append").partitionBy("date").parquet(bronze_path)
     print(f"Wrote {len(rows)} rows to {bronze_path}")
-
 
 
 if __name__ == "__main__":
