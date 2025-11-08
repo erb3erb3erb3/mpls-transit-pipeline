@@ -15,16 +15,20 @@ print(sys.executable)
 print("PYSPARK_PYTHON:", os.environ.get("PYSPARK_PYTHON"))
 
 # Initialize Spark
-spark = SparkSession.builder \
-    .appName("Realtime GTFS Ingestion") \
-    .config("spark.python.worker.faulthandler.enabled", "true") \
+spark = (
+    SparkSession.builder
+    .appName("RT GTFS Vehicle Positions")
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com")
+     .config("spark.hadoop.fs.s3a.aws.credentials.provider", "software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider")
     .getOrCreate()
+)
 
 # GTFS_RT URL
 GTFS_RT_URL = "https://svc.metrotransit.org/mtgtfs/VehiclePositions.pb"
 
 # Output path for bronze data
-bronze_path = "./bronze/realtime_gtfs/vehicle_positions"
+bronze_path = "s3a://minneapolis-transit-lake/bronze/realtime_gtfs/vehicle_positions"
 
 # Logging setup
 logging.basicConfig(
