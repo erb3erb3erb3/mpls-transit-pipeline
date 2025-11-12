@@ -24,7 +24,7 @@ spark = (
 # GTFS_RT URL
 GTFS_RT_URL = "https://svc.metrotransit.org/mtgtfs/tripupdates.pb"
 
-# Output path for bronze data
+# Output path for bronze S3 bucket
 bronze_path = "s3a://minneapolis-transit-lake/bronze/realtime_gtfs/trip_updates"
 
 # Logging setup
@@ -34,12 +34,14 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
+# Function to fetch GTFS Trip Updates and return data as an array of Rows
 def fetch_trip_updates():
     response = requests.get(GTFS_RT_URL)
     if response.status_code != 200:
         print(f"Failed to fetch GTFS RT data: {response.status_code}")
         return []
-        
+
+    # Using gtfs_realtime_pb2 library to read message contents
     feed = gtfs_realtime_pb2.FeedMessage()
     feed.ParseFromString(response.content)
 
@@ -48,8 +50,9 @@ def fetch_trip_updates():
         if entity.HasField("trip_update"):
             trip_update = entity.trip_update
             trip = trip_update.trip
-            vehicle = trip_update.vehicle  # sometimes populated
+            vehicle = trip_update.vehicle  
 
+            # Loop through trip data for each stop on route and their status
             for stu in trip_update.stop_time_update:
                 try:
                     trip_updates.append(Row(
@@ -68,6 +71,7 @@ def fetch_trip_updates():
                     print(f"Failed to process stop_time_update: {e}")
     return trip_updates
 
+# Function to write to bronze S3 bucket, intaking an array as argument
 def write_to_bronze(trip_updates):
     if not trip_updates:
         print("No trip updates to write.")
@@ -77,9 +81,7 @@ def write_to_bronze(trip_updates):
         df = spark.createDataFrame(trip_updates)
         df = df.withColumn("ingestion_time", current_timestamp())
 
-        print(df.toPandas().head())  # Debugging output
-
-        # Coalesce to avoid small files and Spark EOF issues
+        # Repartition to avoid small files and Spark EOF issues
         df.repartition(4).write.mode("append").parquet(bronze_path)
 
         print(f"Successfully wrote {len(trip_updates)} records to {bronze_path} at {datetime.now()}")
@@ -103,3 +105,4 @@ if __name__ == "__main__":
 
         print("Waiting for next fetch cycle...")
         time.sleep(60)
+
