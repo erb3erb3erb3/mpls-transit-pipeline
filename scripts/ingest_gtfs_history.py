@@ -15,7 +15,7 @@ gtfs_files = [
     "calendar",
     "calendar_dates"]
 
-# Path to GTFS data
+# Path to locally downloaded GTFS data and Bronze paths
 gtfs_path = "./data/gtfs"
 bronze_path = "./bronze"
 
@@ -54,6 +54,7 @@ for folder in sorted(os.listdir(gtfs_path)):
 
         print(f"Successfully ingested {file_name} data for date {partition_date} into {output_path}")
     print(f"Completed ingestion for GTFS data from {folder_path}")
+
 
 
 
