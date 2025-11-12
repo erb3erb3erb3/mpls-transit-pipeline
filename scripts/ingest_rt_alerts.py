@@ -10,7 +10,7 @@ from pyspark.sql import Row
 from pyspark.sql.functions import current_timestamp, col, explode_outer
 from pyspark.sql.utils import AnalysisException
 
-# Spark init
+# Initialize Spark
 spark = (
     SparkSession.builder
     .appName("RT GTFS Alerts")
@@ -133,4 +133,5 @@ if __name__ == "__main__":
         
         print("Waiting for next fetch cycle...")
         time.sleep(60)
+
 
