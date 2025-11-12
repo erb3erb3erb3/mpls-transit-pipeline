@@ -3,9 +3,7 @@ from pyspark.sql.functions import lit
 from pyspark.sql import SparkSession
 
 # Initialize Spark session
-spark = SparkSession.builder \
-    .appName("Weather Ingestion") \
-    .getOrCreate() 
+spark = SparkSession.builder.appName("Weather Ingestion").getOrCreate() 
 
 # Path to Weather data
 weather_path = "./data/weather"
@@ -37,3 +35,4 @@ for file in sorted(os.listdir(weather_path)):
     df.write.mode("append").parquet(output_path, partitionBy=["partition_year"])
 
     print(f"Successfully ingested {file} data for date {partition_year} into {output_path}")
+
