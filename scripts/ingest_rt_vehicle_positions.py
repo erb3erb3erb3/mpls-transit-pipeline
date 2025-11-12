@@ -10,10 +10,6 @@ from pyspark.sql import Row
 from pyspark.sql.functions import current_timestamp
 from pyspark.sql.utils import AnalysisException
 
-# Ensure the script is running with the correct Python environment
-print(sys.executable)
-print("PYSPARK_PYTHON:", os.environ.get("PYSPARK_PYTHON"))
-
 # Initialize Spark
 spark = (
     SparkSession.builder
@@ -27,12 +23,12 @@ spark = (
 # GTFS_RT URL
 GTFS_RT_URL = "https://svc.metrotransit.org/mtgtfs/VehiclePositions.pb"
 
-# Output path for bronze data
+# Output path for bronze S3 bucket
 bronze_path = "s3a://minneapolis-transit-lake/bronze/realtime_gtfs/vehicle_positions"
 
 # Logging setup
 logging.basicConfig(
-    filename="ingest_alerts_errors.log",
+    filename="ingest_vehicle_position_errors.log",
     level=logging.ERROR,
     format="%(asctime)s %(levelname)s %(message)s"
 )
@@ -53,15 +49,17 @@ def fetch_vehicle_positions():
                 try:
                     vehicle = entity.vehicle
                     pos = vehicle.position
+
+                    # Casting values to string to avoid Spark merge issue due to inconsistant data type inference from Python Row object
                     vehicle_positions.append(Row(
-                        vehicle_id=str(vehicle.vehicle.id) if vehicle.vehicle.HasField("id") else None,
-                        trip_id=str(vehicle.trip.trip_id) if vehicle.trip.HasField("trip_id") else None,
-                        route_id=str(vehicle.trip.route_id) if vehicle.trip.HasField("route_id") else None,
-                        latitude=str(pos.latitude) if pos.HasField("latitude") else None,
-                        longitude=str(pos.longitude) if pos.HasField("longitude") else None,
-                        bearing=str(pos.bearing) if pos.HasField("bearing") else None,
-                        speed=str(pos.speed) if pos.HasField("speed") else None,
-                        timestamp=str(vehicle.timestamp) if vehicle.HasField("timestamp") else None
+                        vehicle_id = str(vehicle.vehicle.id) if vehicle.vehicle.HasField("id") else None,
+                        trip_id = str(vehicle.trip.trip_id) if vehicle.trip.HasField("trip_id") else None,
+                        route_id = str(vehicle.trip.route_id) if vehicle.trip.HasField("route_id") else None,
+                        latitude = str(pos.latitude) if pos.HasField("latitude") else None,
+                        longitude = str(pos.longitude) if pos.HasField("longitude") else None,
+                        bearing = str(pos.bearing) if pos.HasField("bearing") else None,
+                        speed = str(pos.speed) if pos.HasField("speed") else None,
+                        timestamp = str(vehicle.timestamp) if vehicle.HasField("timestamp") else None
                     ))
                 except Exception as e:
                     logging.error(f"Error processing vehicle entity: {e}")
@@ -81,8 +79,6 @@ def write_to_bronze(vehicle_positions):
     try:
         df = spark.createDataFrame(vehicle_positions)
         df = df.withColumn("ingestion_time", current_timestamp())
-
-        print(df.toPandas().head())  # Debugging output
 
         # Coalesce to avoid small files and Spark EOF issues
         df.coalesce(1).write.mode("append").parquet(bronze_path)
@@ -108,3 +104,4 @@ if __name__ == "__main__":
 
         print("Waiting for next fetch cycle...")
         time.sleep(60)
+
