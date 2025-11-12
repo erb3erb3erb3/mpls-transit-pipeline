@@ -10,10 +10,6 @@ from pyspark.sql import Row
 from pyspark.sql.functions import current_timestamp, col, explode_outer
 from pyspark.sql.utils import AnalysisException
 
-# Ensure the script is running with the correct Python environment
-print(sys.executable)
-print("PYSPARK_PYTHON:", os.environ.get("PYSPARK_PYTHON"))
-
 # Spark init
 spark = (
     SparkSession.builder
@@ -27,23 +23,25 @@ spark = (
 # GTFS_RT URL
 GTFS_RT_URL = "https://svc.metrotransit.org/mtgtfs/alerts.pb"
 
-# Output path for bronze data
+# Output path for bronze S3 bucket 
 bronze_path = "s3a://minneapolis-transit-lake/bronze/realtime_gtfs/alerts"
 
 # Logging setup
 logging.basicConfig(
-    filename="ingest_vp_errors.log",
+    filename="ingest_alerts_errors.log",
     level=logging.ERROR,
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
+# Function to fetch alerts from the GTFS API URL
 def fetch_alerts():
     try:
         response = requests.get(GTFS_RT_URL)
         if response.status_code != 200:
             print(f"Failed to fetch GTFS RT data: {response.status_code}")
             return []
-        
+
+        # Using gtfs_realtime_pb2 library to read message contents
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.ParseFromString(response.content)
     
@@ -56,20 +54,24 @@ def fetch_alerts():
             if entity.HasField("alert"):
                 alert = entity.alert
                 try:
-                    # Find the latest active period to pass with the alert
-                    now = int(time.time())
-                    active_periods = [ap for ap in alert.active_period if ap.start <= now <= (ap.end if ap.end else now + 1)]
+                    
+                    # Find the latest active period to pass with the alert to avoid passing multiple instances that alert was active
+                    now = int(time.time()) # Converts current time to epoch time for comparison
+                    
+                    active_periods = []
+                    for ap in alert.active_period:
+                        if ap.start <= now <= (ap.end if ap.end else now + 1):
+                            active_periods.append(ap)
+                    
+                    # Gets max value of each active periods start time (ap.start) in active_period 
+                    # Key is needed to read the start time from each object. Lambda is used to return the start for each item in active periods
                     latest_active = max(active_periods, key=lambda ap: ap.start, default=None)
-
-                    if latest_active:    
-                        print(f"Latest Active Period: {latest_active.start} to {latest_active.end}")
-                    else:
-                        print("No active periods found.")
+                    
                     alerts.append(Row(
-                        cause =alert.cause if alert.HasField("cause") else None,
+                        cause = alert.cause if alert.HasField("cause") else None,
                         effect = alert.effect if alert.HasField("effect") else None,
-                        header = alert.header_text.translation[0].text if alert.header_text.translation else None,
-                        description = alert.description_text.translation[0].text if alert.description_text.translation else None,
+                        header = alert.header_text.translation[0].text if alert.header_text.translation else None, # First header translation is English
+                        description = alert.description_text.translation[0].text if alert.description_text.translation else None, # First header translation is English
                         severity = alert.severity_level if alert.HasField("severity_level") else None,
                         start = latest_active.start if latest_active else None,
                         end = latest_active.end if latest_active else None,
@@ -85,6 +87,8 @@ def fetch_alerts():
         logging.error(f"Error fetching or parsing GTFS RT data: {e}")
         return []
 
+
+# Function to write alert data to bronze S3 bucket
 def write_to_bronze(alerts):
     if not alerts:
         print("No alerts to write.")
@@ -98,13 +102,12 @@ def write_to_bronze(alerts):
         df = df.withColumn("informed_entity", explode_outer(col("informed_entities")))
 
         # Flatten the informed_entity struct into separate columns
-        df = df.withColumn("agency_id", col("informed_entity.agency_id")) \
-               .withColumn("route_id", col("informed_entity.route_id")) \
-               .withColumn("stop_id", col("informed_entity.stop_id")) \
+        df = (
+            df.withColumn("agency_id", col("informed_entity.agency_id"))
+               .withColumn("route_id", col("informed_entity.route_id"))
+               .withColumn("stop_id", col("informed_entity.stop_id"))
                .drop("informed_entities", "informed_entity")
-
-        # Debugging output
-        print(df.toPandas().head())  
+        )
 
         df.write.mode("append").parquet(bronze_path)
 
@@ -130,3 +133,4 @@ if __name__ == "__main__":
         
         print("Waiting for next fetch cycle...")
         time.sleep(60)
+
