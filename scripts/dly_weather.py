@@ -23,11 +23,11 @@ NOAA_TOKEN = os.getenv("NOAA_TOKEN")
 STATION_ID = "GHCND:USW00014922"      
 BASE_URL = "https://www.ncei.noaa.gov/cdo-web/api/v2/data"
 
-# Schema for the weather data
+# Schema for the weather data to be used by spark
 weather_schema = StructType([
     StructField("station", StringType(), True),
     StructField("datatype", StringType(), True),
-    StructField("value", DoubleType(), True),   
+    StructField("value", DoubleType(), True), # Value comes in as float from python object -> cast to double for persicion in Spark
     StructField("date", StringType(), True)      
 ])
 
@@ -54,7 +54,7 @@ def fetch_noaa_daily(date):
     rows = [Row(
         station=rec["station"],
         datatype=rec["datatype"],
-        value=float(rec["value"]), # Ensure value is float to avoid merge issue in Spark
+        value=float(rec["value"]), # Ensure values are cast to float and not Integer to avoid merge issue in Spark
         date=rec["date"][:10] # Extract YYYY-MM-DD from date timestamp
     ) for rec in results]
     return rows
@@ -80,7 +80,7 @@ def write_to_bronze(rows):
     ###     print(f"Partition for date {partition_date} already exists. Skipping write.")
     ###     return 
 
-    # Create spark Data Frame and write to S3 
+    # Create spark Data Frame and write to bronze S3 bucket
     df = spark.createDataFrame(rows, schema=weather_schema)
     df = df.withColumn("date", df["date"].cast("date"))
     df = df.withColumn("ingestion_time", current_timestamp())
