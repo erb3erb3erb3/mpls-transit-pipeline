@@ -33,13 +33,15 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s"
 )
 
+# Function to fetch vehicle position data from GTFS. Returns data as an array of Rows
 def fetch_vehicle_positions():
     try:
         response = requests.get(GTFS_RT_URL)
         if response.status_code != 200:
             print(f"Failed to fetch GTFS RT data: {response.status_code}")
             return []
-        
+
+        # Using gtfs_realtime_pb2 library to read message contents
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.ParseFromString(response.content)
 
@@ -71,6 +73,7 @@ def fetch_vehicle_positions():
         logging.error(f"Exception during GTFS fetch: {e}")
         return []
 
+# Function to write vehicle positions to bronze S3 bucket. Takes an array of Rows as argument.
 def write_to_bronze(vehicle_positions):
     if not vehicle_positions:
         print("No vehicle positions to write.")
@@ -92,6 +95,7 @@ def write_to_bronze(vehicle_positions):
         logging.error(f"Error writing to bronze: {e}")
         print(f"Error writing to bronze: {e}")
 
+
 if __name__ == "__main__":
     while True:
         print("Fetching vehicle positions...")
@@ -104,4 +108,5 @@ if __name__ == "__main__":
 
         print("Waiting for next fetch cycle...")
         time.sleep(60)
+
 
