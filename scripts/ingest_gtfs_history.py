@@ -2,10 +2,8 @@ import os
 from pyspark.sql.functions import lit
 from pyspark.sql import SparkSession
 
-# Initialize Spark session
-spark = SparkSession.builder \
-    .appName("GTFS Ingestion") \
-    .getOrCreate() 
+# Initialize Spark
+spark = SparkSession.builder.appName("GTFS Historical Ingestion").getOrCreate() 
 
 # GTFS File Names
 gtfs_files = [
@@ -29,11 +27,12 @@ for folder in sorted(os.listdir(gtfs_path)):
     if not folder.startswith("GTFS") or not os.path.isdir(folder_path):
         continue
 
-    # Extract partition date from folder name
+    # Extract partition date from folder name (Filename ex: GTFS20250101)
     partition_date = folder.replace("GTFS", "")
 
     print(f"Ingesting GTFS data from {folder_path} for date {partition_date}")
 
+    # Loop through the files in GTFS
     for file_name in gtfs_files:
         file_path = os.path.join(folder_path, f"{file_name}.txt")
 
@@ -55,5 +54,6 @@ for folder in sorted(os.listdir(gtfs_path)):
 
         print(f"Successfully ingested {file_name} data for date {partition_date} into {output_path}")
     print(f"Completed ingestion for GTFS data from {folder_path}")
+
 
 
